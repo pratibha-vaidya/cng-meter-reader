@@ -1,9 +1,10 @@
 import 'dart:io';
-import 'package:flutter/material.dart';
+
 import 'package:camera/camera.dart';
+import 'package:flutter/material.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:image/image.dart' as img;
+import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 class CameraCaptureScreen extends StatefulWidget {
@@ -36,7 +37,7 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen> {
 
     _cameraController = CameraController(
       rearCamera,
-      ResolutionPreset.high,
+      ResolutionPreset.max,
       enableAudio: false,
     );
 
@@ -53,9 +54,8 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen> {
 
     if (decodedImage == null) return;
 
-    // Crop to center rectangle
-    final double cropWidth = decodedImage.width * 0.8;
-    final double cropHeight = decodedImage.height * 0.3;
+    final double cropWidth = decodedImage.width * 0.85;
+    final double cropHeight = decodedImage.height * 0.4;
     final int cropX = ((decodedImage.width - cropWidth) / 2).round();
     final int cropY = ((decodedImage.height - cropHeight) / 2).round();
 
@@ -67,7 +67,6 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen> {
       height: cropHeight.round(),
     );
 
-
     final Directory tempDir = await getTemporaryDirectory();
     final File croppedFile = File('${tempDir.path}/cropped_image.jpg');
     await croppedFile.writeAsBytes(img.encodeJpg(cropped));
@@ -75,34 +74,29 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen> {
     final inputImage = InputImage.fromFile(croppedFile);
     final result = await _textRecognizer.processImage(inputImage);
     final fullText = result.text;
-
-    final values = _extractNumericValues(result);
+    final lines = _extractFullLines(result);
 
     await _textRecognizer.close();
+
     Navigator.pop(context, {
       'fullText': fullText,
-      'labeledValues': values,
+      'labeledValues': lines,
     });
   }
 
-  List<MapEntry<String, String>> _extractNumericValues(RecognizedText recognizedText) {
-    final List<MapEntry<String, String>> results = [];
-    final RegExp numberRegex = RegExp(r'\b\d{1,7}(\.\d{1,2})?\b', caseSensitive: false);
+  List<String> _extractFullLines(RecognizedText recognizedText) {
+    final List<String> lines = [];
 
     for (final block in recognizedText.blocks) {
       for (final line in block.lines) {
-        final text = line.text.toLowerCase().trim();
-        final match = numberRegex.firstMatch(text);
-        if (match != null) {
-          final number = match.group(0)!;
-          if (text.contains('rupees') || text.contains('litres') || text.contains('rs/litre')) {
-            results.add(MapEntry('', number)); // only number, no label
-          }
+        final text = line.text.trim();
+        if (text.isNotEmpty) {
+          lines.add(text);
         }
       }
     }
 
-    return results;
+    return lines;
   }
 
   @override
