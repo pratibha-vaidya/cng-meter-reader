@@ -1,8 +1,9 @@
 import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import 'camera_capture_screen.dart';
@@ -53,13 +54,14 @@ class _ScannerLauncherScreenState extends State<ScannerLauncherScreen> {
     final result = await recognizer.processImage(inputImage);
     await recognizer.close();
 
-    final labeledValues = _extractLabeledValues(result);
+    final fullLines = _extractFullLines(result);
 
     setState(() {
       _selectedImage = file;
     });
 
-    _showLabeledResults(labeledValues);
+    _showScannedRows(fullLines);
+
   }
 
   Future<void> _scanFromCamera() async {
@@ -70,96 +72,26 @@ class _ScannerLauncherScreenState extends State<ScannerLauncherScreen> {
 
     if (result != null && result is Map) {
       final fullText = result['fullText'] ?? '';
-      final labeledValues = _extractLabeledValuesFromText(fullText);
-      _showLabeledResults(labeledValues);
+      final labeledValues = result['labeledValues'] as List<String>? ?? [];
+
+      _showScannedRows(labeledValues);
     }
   }
 
-  List<MapEntry<String, String>> _extractLabeledValues(RecognizedText recognizedText) {
-    final List<MapEntry<String, String>> results = [];
-    final RegExp numberRegex = RegExp(r'\b\d{1,6}(\.\d{1,2})?\b');
-    final List<MapEntry<String, Offset>> allLines = [];
+
+  List<String> _extractFullLines(RecognizedText recognizedText) {
+    final List<String> lines = [];
 
     for (final block in recognizedText.blocks) {
       for (final line in block.lines) {
         final text = line.text.trim();
-        final position = line.boundingBox?.topLeft ?? Offset.zero;
-        allLines.add(MapEntry(text, position));
-      }
-    }
-
-    allLines.sort((a, b) => a.value.dy.compareTo(b.value.dy));
-
-    for (final entry in allLines) {
-      final text = entry.key.trim();
-      final position = entry.value;
-      final match = numberRegex.firstMatch(text);
-
-      if (match != null) {
-        final number = match.group(0)!;
-
-        final labelEntry = allLines.firstWhere(
-              (e) {
-            final labelText = e.key.toLowerCase().replaceAll(' ', '');
-            final labelPos = e.value;
-            final distance = (labelPos.dy - position.dy).abs();
-            return distance < 30 &&
-                (labelText.contains('rupees') ||
-                    labelText.contains('litres') ||
-                    labelText.contains('rs/litre'));
-          },
-          orElse: () => const MapEntry('', Offset.zero),
-        );
-
-        if (labelEntry.key.isNotEmpty) {
-          final normalizedLabel = labelEntry.key.toUpperCase().trim();
-          results.add(MapEntry(normalizedLabel, number));
+        if (text.isNotEmpty) {
+          lines.add(text);
         }
       }
     }
 
-    return results;
-  }
-
-  List<MapEntry<String, String>> _extractLabeledValuesFromText(String fullText) {
-    final List<MapEntry<String, String>> results = [];
-    final RegExp numberRegex = RegExp(r'\b\d{1,6}(\.\d{1,2})?\b');
-    final List<MapEntry<String, int>> allLines = [];
-
-    final lines = fullText.split('\n');
-    for (int i = 0; i < lines.length; i++) {
-      final text = lines[i].trim();
-      allLines.add(MapEntry(text, i));
-    }
-
-    allLines.sort((a, b) => a.value.compareTo(b.value));
-
-    for (final entry in allLines) {
-      final text = entry.key.trim();
-      final index = entry.value;
-      final match = numberRegex.firstMatch(text);
-
-      if (match != null) {
-        final number = match.group(0)!;
-
-        final labelEntry = allLines.firstWhere(
-              (e) {
-            final labelText = e.key.trim();
-            final lineDiff = (e.value - index).abs();
-            final hasNoNumber = !numberRegex.hasMatch(labelText);
-            return lineDiff <= 1 && hasNoNumber;
-          },
-          orElse: () => const MapEntry('', 0),
-        );
-
-        if (labelEntry.key.isNotEmpty) {
-          final normalizedLabel = labelEntry.key.toUpperCase().trim();
-          results.add(MapEntry(normalizedLabel, number));
-        }
-      }
-    }
-
-    return results;
+    return lines;
   }
 
   void _showLabeledResults(List<MapEntry<String, String>> values) {
@@ -187,6 +119,27 @@ class _ScannerLauncherScreenState extends State<ScannerLauncherScreen> {
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
+        ],
+      ),
+    );
+  }
+
+  void _showScannedRows(List<String> rows) {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Detected Rows'),
+        content: rows.isEmpty
+            ? const Text('No rows found.')
+            : Column(
+          mainAxisSize: MainAxisSize.min,
+          children: rows.map((text) => Text(text)).toList(),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
         ],
       ),
     );

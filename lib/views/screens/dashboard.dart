@@ -1,4 +1,3 @@
-import 'dart:typed_data';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -17,6 +16,7 @@ class _DashboardState extends State<Dashboard> with WidgetsBindingObserver {
   late TextRecognizer _textRecognizer;
   bool _isDetecting = false;
   bool _cameraInitialized = false;
+  String? _recognizedText;
 
   @override
   void initState() {
@@ -58,14 +58,10 @@ class _DashboardState extends State<Dashboard> with WidgetsBindingObserver {
           final recognizedText = await _textRecognizer.processImage(inputImage);
           final fullText = recognizedText.text.trim();
 
-          if (fullText.isNotEmpty) {
-            await _cameraController.stopImageStream();
-            await _cameraController.dispose();
-            await _textRecognizer.close();
-
-            if (mounted) {
-              Navigator.pop(context, fullText);
-            }
+          if (fullText.isNotEmpty && mounted) {
+            setState(() {
+              _recognizedText = fullText;
+            });
           }
         } catch (e) {
           debugPrint('OCR error: $e');
@@ -95,8 +91,7 @@ class _DashboardState extends State<Dashboard> with WidgetsBindingObserver {
 
     final rotation = InputImageRotationValue.fromRawValue(
       _cameraController.description.sensorOrientation,
-    ) ??
-        InputImageRotation.rotation0deg;
+    ) ?? InputImageRotation.rotation0deg;
 
     final format = InputImageFormatValue.fromRawValue(image.format.raw) ??
         InputImageFormat.nv21;
@@ -112,6 +107,14 @@ class _DashboardState extends State<Dashboard> with WidgetsBindingObserver {
     );
   }
 
+  void _showMessage(String message) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
+    }
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (!_cameraInitialized || !_cameraController.value.isInitialized) return;
@@ -120,14 +123,6 @@ class _DashboardState extends State<Dashboard> with WidgetsBindingObserver {
       _cameraController.dispose();
     } else if (state == AppLifecycleState.resumed) {
       _initializeCamera();
-    }
-  }
-
-  void _showMessage(String message) {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message)),
-      );
     }
   }
 
@@ -144,10 +139,30 @@ class _DashboardState extends State<Dashboard> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Scanning...')),
-      body: _cameraInitialized && _cameraController.value.isInitialized
-          ? CameraPreview(_cameraController)
-          : const Center(child: CircularProgressIndicator()),
+      appBar: AppBar(title: const Text('Dashboard OCR')),
+      body: Column(
+        children: [
+          if (_cameraInitialized && _cameraController.value.isInitialized)
+            AspectRatio(
+              aspectRatio: _cameraController.value.aspectRatio,
+              child: CameraPreview(_cameraController),
+            )
+          else
+            const Center(child: CircularProgressIndicator()),
+
+          const SizedBox(height: 10),
+
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                _recognizedText ?? 'Scanning...',
+                style: const TextStyle(fontSize: 16),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
