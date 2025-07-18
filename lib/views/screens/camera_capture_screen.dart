@@ -45,32 +45,59 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen> {
     setState(() => _isInitialized = true);
   }
 
+
   Future<void> _captureAndProcess() async {
     if (!_cameraController.value.isInitialized) return;
 
+    // Ensure focus and no flash
+    await _cameraController.setFlashMode(FlashMode.off);
+    await _cameraController.setFocusMode(FocusMode.auto);
+
+    // Take picture
     final file = await _cameraController.takePicture();
     final bytes = await File(file.path).readAsBytes();
-    final decodedImage = img.decodeImage(bytes);
 
-    if (decodedImage == null) return;
+    // Decode and fix orientation
+    final img.Image? rawImage = img.decodeImage(bytes);
+    if (rawImage == null) return;
+    final img.Image originalImage = img.bakeOrientation(rawImage);
 
-    final double cropWidth = decodedImage.width * 0.85;
-    final double cropHeight = decodedImage.height * 0.4;
-    final int cropX = ((decodedImage.width - cropWidth) / 2).round();
-    final int cropY = ((decodedImage.height - cropHeight) / 2).round();
+    // Define crop area (center)
+    final int cropWidth = (originalImage.width * 0.8).toInt();
+    final int cropHeight = (originalImage.height * 0.4).toInt();
+    final int cropX = ((originalImage.width - cropWidth) / 2).toInt();
+    final int cropY = ((originalImage.height - cropHeight) / 2).toInt();
 
+    // Crop the image
     final img.Image cropped = img.copyCrop(
-      decodedImage,
+      originalImage,
       x: cropX,
       y: cropY,
-      width: cropWidth.round(),
-      height: cropHeight.round(),
+      width: cropWidth,
+      height: cropHeight,
     );
 
+    // Save cropped image
     final Directory tempDir = await getTemporaryDirectory();
     final File croppedFile = File('${tempDir.path}/cropped_image.jpg');
-    await croppedFile.writeAsBytes(img.encodeJpg(cropped));
+    await croppedFile.writeAsBytes(img.encodeJpg(cropped, quality: 100));
 
+    // (Optional) Show preview of cropped image
+    await showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Cropped Preview'),
+        content: Image.file(croppedFile),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Continue'),
+          )
+        ],
+      ),
+    );
+
+    // Run OCR
     final inputImage = InputImage.fromFile(croppedFile);
     final result = await _textRecognizer.processImage(inputImage);
     final fullText = result.text;
@@ -78,6 +105,7 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen> {
 
     await _textRecognizer.close();
 
+    // Return result
     Navigator.pop(context, {
       'fullText': fullText,
       'labeledValues': lines,

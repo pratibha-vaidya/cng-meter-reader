@@ -8,26 +8,51 @@ import 'package:permission_handler/permission_handler.dart';
 
 import 'camera_capture_screen.dart';
 
-class ScannerLauncherScreen extends StatefulWidget {
-  const ScannerLauncherScreen({super.key, required String title});
+class ScanCameraScreen extends StatefulWidget {
+  const ScanCameraScreen({super.key, required String title});
 
   @override
-  State<ScannerLauncherScreen> createState() => _ScannerLauncherScreenState();
+  State<ScanCameraScreen> createState() => _ScanCameraScreenState();
 }
 
-class _ScannerLauncherScreenState extends State<ScannerLauncherScreen> {
+class _ScanCameraScreenState extends State<ScanCameraScreen> {
   File? _selectedImage;
 
   Future<void> _scanFromGallery() async {
-    final permission = await Permission.photos.request();
-    if (!permission.isGranted) return;
+    final permissionStatus = await Permission.photos.request();
+    if (!permissionStatus.isGranted) {
+      _showSnackBar('Photo permission denied');
+      return;
+    }
 
-    final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
-    if (picked == null) return;
+    final pickedFile = await ImagePicker().pickImage(source: ImageSource.gallery);
+    if (pickedFile == null) return;
 
-    // Crop the image
-    final croppedFile = await ImageCropper().cropImage(
-      sourcePath: picked.path,
+    final cropped = await _cropImage(pickedFile.path);
+    if (cropped == null) return;
+
+    final detectedLines = await _processImage(File(cropped.path));
+    if (!mounted) return;
+
+    setState(() => _selectedImage = File(cropped.path));
+    _showDetectedLinesDialog(detectedLines);
+  }
+
+  Future<void> _scanFromCamera() async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const CameraCaptureScreen()),
+    );
+
+    if (result is Map) {
+      final labeledValues = result['labeledValues'] as List<String>? ?? [];
+      _showDetectedLinesDialog(labeledValues);
+    }
+  }
+
+  Future<CroppedFile?> _cropImage(String path) {
+    return ImageCropper().cropImage(
+      sourcePath: path,
       aspectRatioPresets: [
         CropAspectRatioPreset.original,
         CropAspectRatioPreset.ratio4x3,
@@ -40,52 +65,27 @@ class _ScannerLauncherScreenState extends State<ScannerLauncherScreen> {
           toolbarWidgetColor: Colors.white,
           lockAspectRatio: false,
         ),
-        IOSUiSettings(
-          title: 'Crop Image',
-        ),
+        IOSUiSettings(title: 'Crop Image'),
       ],
     );
+  }
 
-    if (croppedFile == null) return;
-
-    final file = File(croppedFile.path);
-    final inputImage = InputImage.fromFile(file);
+  Future<List<String>> _processImage(File imageFile) async {
+    final inputImage = InputImage.fromFile(imageFile);
     final recognizer = TextRecognizer(script: TextRecognitionScript.latin);
     final result = await recognizer.processImage(inputImage);
     await recognizer.close();
-
-    final fullLines = _extractFullLines(result);
-
-    setState(() {
-      _selectedImage = file;
-    });
-
-    _showScannedRows(fullLines);
-
+    return _extractLinesWithNumbers(result);
   }
 
-  Future<void> _scanFromCamera() async {
-    final result = await Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const CameraCaptureScreen()),
-    );
-
-    if (result != null && result is Map) {
-      final fullText = result['fullText'] ?? '';
-      final labeledValues = result['labeledValues'] as List<String>? ?? [];
-
-      _showScannedRows(labeledValues);
-    }
-  }
-
-
-  List<String> _extractFullLines(RecognizedText recognizedText) {
+  List<String> _extractLinesWithNumbers(RecognizedText recognizedText) {
     final List<String> lines = [];
+    final numberRegex = RegExp(r'\b\d{1,3}(?:[.,]?\d{1,3}){1,2}\b');
 
     for (final block in recognizedText.blocks) {
       for (final line in block.lines) {
         final text = line.text.trim();
-        if (text.isNotEmpty) {
+        if (numberRegex.hasMatch(text)) {
           lines.add(text);
         }
       }
@@ -94,55 +94,61 @@ class _ScannerLauncherScreenState extends State<ScannerLauncherScreen> {
     return lines;
   }
 
-  void _showLabeledResults(List<MapEntry<String, String>> values) {
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Detected Values'),
-        content: values.isEmpty
-            ? const Text('No values found.')
-            : Column(
-          mainAxisSize: MainAxisSize.min,
-          children: values.map((e) {
-            return Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    e.key,
-                    style: const TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                ),
-                Text(e.value),
-              ],
-            );
-          }).toList(),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
-        ],
-      ),
-    );
-  }
-
-  void _showScannedRows(List<String> rows) {
+  void _showDetectedLinesDialog(List<String> rows) {
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Detected Rows'),
         content: rows.isEmpty
-            ? const Text('No rows found.')
+            ? const Text('No data found.')
             : Column(
           mainAxisSize: MainAxisSize.min,
-          children: rows.map((text) => Text(text)).toList(),
+          children: rows.map((line) => Text(line)).toList(),
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
+          if (rows.isNotEmpty)
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                _showSubmitConfirmation(rows);
+              },
+              child: const Text('Submit'),
+            ),
+        ],
+      ),
+    );
+  }
+
+  void _showSubmitConfirmation(List<String> rows) {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Confirm Submission'),
+        content: const Text('Are you sure you want to submit the scanned data?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _submitScannedData(rows);
+            },
+            child: const Text('Yes, Submit'),
           ),
         ],
       ),
     );
+  }
+
+  void _submitScannedData(List<String> rows) {
+    // TODO: Replace this with your real API logic
+    debugPrint('Scanned data submitted: ${rows.join(', ')}');
+    _showSnackBar('Scanned data submitted successfully');
+  }
+
+  void _showSnackBar(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
