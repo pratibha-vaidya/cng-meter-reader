@@ -17,7 +17,7 @@ class CameraCaptureScreen extends StatefulWidget {
 class _CameraCaptureScreenState extends State<CameraCaptureScreen> {
   late CameraController _cameraController;
   bool _isInitialized = false;
-  late TextRecognizer _textRecognizer;
+  late final TextRecognizer _textRecognizer;
 
   @override
   void initState() {
@@ -37,79 +37,77 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen> {
 
     _cameraController = CameraController(
       rearCamera,
-      ResolutionPreset.max,
+      ResolutionPreset.high,
       enableAudio: false,
     );
 
     await _cameraController.initialize();
+    if (!mounted) return;
     setState(() => _isInitialized = true);
   }
 
-
   Future<void> _captureAndProcess() async {
-    if (!_cameraController.value.isInitialized) return;
+    if (!_cameraController.value.isInitialized || _cameraController.value.isTakingPicture) return;
 
-    // Ensure focus and no flash
-    await _cameraController.setFlashMode(FlashMode.off);
-    await _cameraController.setFocusMode(FocusMode.auto);
+    try {
+      await _cameraController.setFlashMode(FlashMode.off);
+      await _cameraController.setFocusMode(FocusMode.auto);
 
-    // Take picture
-    final file = await _cameraController.takePicture();
-    final bytes = await File(file.path).readAsBytes();
+      final file = await _cameraController.takePicture();
+      final bytes = await File(file.path).readAsBytes();
+      final img.Image? rawImage = img.decodeImage(bytes);
 
-    // Decode and fix orientation
-    final img.Image? rawImage = img.decodeImage(bytes);
-    if (rawImage == null) return;
-    final img.Image originalImage = img.bakeOrientation(rawImage);
+      if (rawImage == null) return;
+      final img.Image originalImage = img.bakeOrientation(rawImage);
 
-    // Define crop area (center)
-    final int cropWidth = (originalImage.width * 0.8).toInt();
-    final int cropHeight = (originalImage.height * 0.4).toInt();
-    final int cropX = ((originalImage.width - cropWidth) / 2).toInt();
-    final int cropY = ((originalImage.height - cropHeight) / 2).toInt();
+      // Crop center area
+      final int cropWidth = (originalImage.width * 0.8).toInt();
+      final int cropHeight = (originalImage.height * 0.4).toInt();
+      final int cropX = ((originalImage.width - cropWidth) / 2).toInt();
+      final int cropY = ((originalImage.height - cropHeight) / 2).toInt();
 
-    // Crop the image
-    final img.Image cropped = img.copyCrop(
-      originalImage,
-      x: cropX,
-      y: cropY,
-      width: cropWidth,
-      height: cropHeight,
-    );
+      final img.Image cropped = img.copyCrop(
+        originalImage,
+        x: cropX,
+        y: cropY,
+        width: cropWidth,
+        height: cropHeight,
+      );
 
-    // Save cropped image
-    final Directory tempDir = await getTemporaryDirectory();
-    final File croppedFile = File('${tempDir.path}/cropped_image.jpg');
-    await croppedFile.writeAsBytes(img.encodeJpg(cropped, quality: 100));
+      final Directory tempDir = await getTemporaryDirectory();
+      final File croppedFile = File('${tempDir.path}/cropped_image.jpg');
+      await croppedFile.writeAsBytes(img.encodeJpg(cropped));
 
-    // (Optional) Show preview of cropped image
-    await showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Cropped Preview'),
-        content: Image.file(croppedFile),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Continue'),
-          )
-        ],
-      ),
-    );
+      // Optional: Preview
+      await showDialog(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Cropped Preview'),
+          content: Image.file(croppedFile),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Continue'),
+            )
+          ],
+        ),
+      );
 
-    // Run OCR
-    final inputImage = InputImage.fromFile(croppedFile);
-    final result = await _textRecognizer.processImage(inputImage);
-    final fullText = result.text;
-    final lines = _extractFullLines(result);
+      // OCR
+      final inputImage = InputImage.fromFile(croppedFile);
+      final result = await _textRecognizer.processImage(inputImage);
+      final fullText = result.text;
+      final lines = _extractFullLines(result);
 
-    await _textRecognizer.close();
-
-    // Return result
-    Navigator.pop(context, {
-      'fullText': fullText,
-      'labeledValues': lines,
-    });
+      // Return result
+      if (!mounted) return;
+      Navigator.pop(context, {
+        'fullText': fullText,
+        'labeledValues': lines,
+      });
+    } catch (e) {
+      debugPrint('Error: $e');
+    }
   }
 
   List<String> _extractFullLines(RecognizedText recognizedText) {
@@ -145,12 +143,7 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen> {
       body: Stack(
         children: [
           CameraPreview(_cameraController),
-          Center(
-            child: CustomPaint(
-              size: Size.infinite,
-              painter: CropBoxPainter(),
-            ),
-          ),
+          Center(child: CustomPaint(size: Size.infinite, painter: CropBoxPainter())),
           Positioned(
             bottom: 40,
             left: 50,

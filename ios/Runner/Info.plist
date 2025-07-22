@@ -50,6 +50,9 @@
     <string>Need camera access to scan documents</string>
     <key>NSPhotoLibraryUsageDescription</key>
     <string>Need access to photo library</string>
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>This app needs access to your photo library to select images.</string>
+
 
 </dict>
 </plist>

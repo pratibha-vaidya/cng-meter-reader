@@ -5,6 +5,8 @@ import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart
 import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:device_info_plus/device_info_plus.dart';
+
 
 import 'camera_capture_screen.dart';
 
@@ -19,11 +21,14 @@ class _ScanCameraScreenState extends State<ScanCameraScreen> {
   File? _selectedImage;
 
   Future<void> _scanFromGallery() async {
-    final permissionStatus = await Permission.photos.request();
-    if (!permissionStatus.isGranted) {
-      _showSnackBar('Photo permission denied');
+
+    final hasPermission = await _requestGalleryPermission();
+
+    if (!hasPermission) {
+      _showSnackBar('Gallery permission denied');
       return;
     }
+
 
     final pickedFile = await ImagePicker().pickImage(source: ImageSource.gallery);
     if (pickedFile == null) return;
@@ -94,11 +99,28 @@ class _ScanCameraScreenState extends State<ScanCameraScreen> {
     return lines;
   }
 
+  Future<bool> _requestGalleryPermission() async {
+    if (Platform.isAndroid) {
+      final androidInfo = await DeviceInfoPlugin().androidInfo;
+      if (androidInfo.version.sdkInt >= 33) {
+        final status = await Permission.photos.request();
+        return status.isGranted;
+      } else {
+        final status = await Permission.storage.request();
+        return status.isGranted;
+      }
+    } else if (Platform.isIOS) {
+      final status = await Permission.photos.request();
+      return status.isGranted;
+    }
+    return false;
+  }
+
   void _showDetectedLinesDialog(List<String> rows) {
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('Detected Rows'),
+        title: const Text('Detected Data'),
         content: rows.isEmpty
             ? const Text('No data found.')
             : Column(
