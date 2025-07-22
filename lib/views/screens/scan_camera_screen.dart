@@ -1,45 +1,44 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
-import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
-import 'package:image_cropper/image_cropper.dart';
-import 'package:image_picker/image_picker.dart';
-import 'package:permission_handler/permission_handler.dart';
-import 'package:device_info_plus/device_info_plus.dart';
-
+import 'package:oce_poc/view_model/scan_view_model.dart';
+import 'package:provider/provider.dart';
 
 import 'camera_capture_screen.dart';
+import 'saved_submissions_screen.dart'; // Make sure this import exists
 
-class ScanCameraScreen extends StatefulWidget {
+class ScanCameraScreen extends StatelessWidget {
   const ScanCameraScreen({super.key, required String title});
 
   @override
-  State<ScanCameraScreen> createState() => _ScanCameraScreenState();
+  Widget build(BuildContext context) {
+    return ChangeNotifierProvider(
+      create: (_) => ScanViewModel(),
+      child: const _ScanCameraScreenBody(),
+    );
+  }
 }
 
-class _ScanCameraScreenState extends State<ScanCameraScreen> {
-  File? _selectedImage;
+class _ScanCameraScreenBody extends StatefulWidget {
+  const _ScanCameraScreenBody();
 
+  @override
+  State<_ScanCameraScreenBody> createState() => _ScanCameraScreenBodyState();
+}
+
+class _ScanCameraScreenBodyState extends State<_ScanCameraScreenBody> {
   Future<void> _scanFromGallery() async {
-
-    final hasPermission = await _requestGalleryPermission();
+    final viewModel = context.read<ScanViewModel>();
+    final hasPermission = await viewModel.requestGalleryPermission();
 
     if (!hasPermission) {
       _showSnackBar('Gallery permission denied');
       return;
     }
 
+    final imageFile = await viewModel.pickAndCropImageFromGallery();
+    if (imageFile == null) return;
 
-    final pickedFile = await ImagePicker().pickImage(source: ImageSource.gallery);
-    if (pickedFile == null) return;
-
-    final cropped = await _cropImage(pickedFile.path);
-    if (cropped == null) return;
-
-    final detectedLines = await _processImage(File(cropped.path));
+    final detectedLines = await viewModel.processImage(imageFile);
     if (!mounted) return;
-
-    setState(() => _selectedImage = File(cropped.path));
     _showDetectedLinesDialog(detectedLines);
   }
 
@@ -53,67 +52,6 @@ class _ScanCameraScreenState extends State<ScanCameraScreen> {
       final labeledValues = result['labeledValues'] as List<String>? ?? [];
       _showDetectedLinesDialog(labeledValues);
     }
-  }
-
-  Future<CroppedFile?> _cropImage(String path) {
-    return ImageCropper().cropImage(
-      sourcePath: path,
-      aspectRatioPresets: [
-        CropAspectRatioPreset.original,
-        CropAspectRatioPreset.ratio4x3,
-        CropAspectRatioPreset.ratio16x9,
-      ],
-      uiSettings: [
-        AndroidUiSettings(
-          toolbarTitle: 'Crop Image',
-          toolbarColor: Colors.deepOrange,
-          toolbarWidgetColor: Colors.white,
-          lockAspectRatio: false,
-        ),
-        IOSUiSettings(title: 'Crop Image'),
-      ],
-    );
-  }
-
-  Future<List<String>> _processImage(File imageFile) async {
-    final inputImage = InputImage.fromFile(imageFile);
-    final recognizer = TextRecognizer(script: TextRecognitionScript.latin);
-    final result = await recognizer.processImage(inputImage);
-    await recognizer.close();
-    return _extractLinesWithNumbers(result);
-  }
-
-  List<String> _extractLinesWithNumbers(RecognizedText recognizedText) {
-    final List<String> lines = [];
-    final numberRegex = RegExp(r'\b\d{1,3}(?:[.,]?\d{1,3}){1,2}\b');
-
-    for (final block in recognizedText.blocks) {
-      for (final line in block.lines) {
-        final text = line.text.trim();
-        if (numberRegex.hasMatch(text)) {
-          lines.add(text);
-        }
-      }
-    }
-
-    return lines;
-  }
-
-  Future<bool> _requestGalleryPermission() async {
-    if (Platform.isAndroid) {
-      final androidInfo = await DeviceInfoPlugin().androidInfo;
-      if (androidInfo.version.sdkInt >= 33) {
-        final status = await Permission.photos.request();
-        return status.isGranted;
-      } else {
-        final status = await Permission.storage.request();
-        return status.isGranted;
-      }
-    } else if (Platform.isIOS) {
-      final status = await Permission.photos.request();
-      return status.isGranted;
-    }
-    return false;
   }
 
   void _showDetectedLinesDialog(List<String> rows) {
@@ -153,8 +91,12 @@ class _ScanCameraScreenState extends State<ScanCameraScreen> {
           ElevatedButton(
             onPressed: () {
               Navigator.pop(context);
-              _submitScannedData(rows);
+
+              final viewModel = Provider.of<ScanViewModel>(context, listen: false);
+              viewModel.setScannedLines(rows); // <-- Store the lines first
+              viewModel.submitScannedData(context, rows); // <-- Then submit them
             },
+
             child: const Text('Yes, Submit'),
           ),
         ],
@@ -162,11 +104,7 @@ class _ScanCameraScreenState extends State<ScanCameraScreen> {
     );
   }
 
-  void _submitScannedData(List<String> rows) {
-    // TODO: Replace this with your real API logic
-    debugPrint('Scanned data submitted: ${rows.join(', ')}');
-    _showSnackBar('Scanned data submitted successfully');
-  }
+
 
   void _showSnackBar(String message) {
     if (!mounted) return;
@@ -175,8 +113,25 @@ class _ScanCameraScreenState extends State<ScanCameraScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final viewModel = context.watch<ScanViewModel>();
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Scan Text or Numbers')),
+      appBar: AppBar(
+        title: const Text('Scan Text or Numbers'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.save),
+            tooltip: 'Saved Submissions',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const SavedSubmissionsScreen()),
+              );
+            },
+          ),
+          IconButton(icon: const Icon(Icons.settings), onPressed: () {}),
+        ],
+      ),
       body: Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
@@ -195,24 +150,18 @@ class _ScanCameraScreenState extends State<ScanCameraScreen> {
                 onPressed: _scanFromCamera,
                 icon: const Icon(Icons.camera_alt),
                 label: const Text('Scan Using Camera'),
-                style: ElevatedButton.styleFrom(
-                  minimumSize: const Size.fromHeight(50),
-                  backgroundColor: Colors.blue,
-                ),
+                style: ElevatedButton.styleFrom(minimumSize: const Size.fromHeight(50)),
               ),
               const SizedBox(height: 20),
               ElevatedButton.icon(
                 onPressed: _scanFromGallery,
                 icon: const Icon(Icons.photo_library),
                 label: const Text('Upload from Gallery'),
-                style: ElevatedButton.styleFrom(
-                  minimumSize: const Size.fromHeight(50),
-                  backgroundColor: Colors.green,
-                ),
+                style: ElevatedButton.styleFrom(minimumSize: const Size.fromHeight(50)),
               ),
-              if (_selectedImage != null) ...[
+              if (viewModel.selectedImage != null) ...[
                 const SizedBox(height: 20),
-                Image.file(_selectedImage!, height: 150),
+                Image.file(viewModel.selectedImage!, height: 150),
               ],
             ],
           ),

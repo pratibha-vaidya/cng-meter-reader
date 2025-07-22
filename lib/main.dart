@@ -1,8 +1,23 @@
 import 'package:flutter/material.dart';
+import 'package:hive/hive.dart';
+import 'package:oce_poc/views/screens/connectivity_banner.dart';
 import 'package:oce_poc/views/screens/scan_camera_screen.dart';
+import 'package:overlay_support/overlay_support.dart';
+import 'package:path_provider/path_provider.dart';
 
-void main() {
-  runApp(const MyApp());
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  final appDocumentDir = await getApplicationDocumentsDirectory();
+  Hive.init(appDocumentDir.path);
+
+  await Hive.openBox('offline_submissions');
+
+  runApp(
+    OverlaySupport.global(
+      child: MyApp(),
+    ),
+  );
 }
 
 class MyApp extends StatelessWidget {
@@ -13,12 +28,24 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'Flutter Demo',
       debugShowCheckedModeBanner: false,
-
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-        useMaterial3: true,
+        primarySwatch: Colors.green,
+        scaffoldBackgroundColor: Colors.green.shade50,
+        appBarTheme: AppBarTheme(
+          backgroundColor: Colors.green.shade700,
+          foregroundColor: Colors.white,
+        ),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.green.shade600,
+            foregroundColor: Colors.white,
+            textStyle: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+        ),
       ),
-      home: ScanCameraScreen(title: 'Fuel Meter reading'),
+      home: ConnectivityBanner(
+        child: ScanCameraScreen(title: 'Fuel Meter Reading'),
+      ),
     );
   }
 }
