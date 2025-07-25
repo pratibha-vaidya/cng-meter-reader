@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
@@ -8,9 +9,20 @@ import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 
-class ScanViewModel extends ChangeNotifier {
+class DashboardViewModel extends ChangeNotifier {
   File? selectedImage;
   List<String> scannedLines = [];
+
+  List<Map<String, dynamic>> submittedList = [];
+  List<Map<String, dynamic>> pendingList = [];
+
+  bool isSubmitting = false;
+
+  void setSubmitting(bool value) {
+    isSubmitting = value;
+    notifyListeners();
+  }
+
 
   Future<bool> requestGalleryPermission() async {
     if (Platform.isAndroid) {
@@ -23,6 +35,13 @@ class ScanViewModel extends ChangeNotifier {
     }
     return false;
   }
+
+  Future<bool> isInternetAvailable() async {
+    final connectivityResult = await Connectivity().checkConnectivity();
+    return connectivityResult != ConnectivityResult.none;
+  }
+
+
 
   Future<File?> pickAndCropImageFromGallery() async {
     final picker = ImagePicker();
@@ -79,13 +98,26 @@ class ScanViewModel extends ChangeNotifier {
     return lines;
   }
 
-  void submitScannedData(BuildContext context, List<String> lines) async {
-    final box = Hive.box('offline_submissions');
-    final timestamp = DateTime.now().toIso8601String();
+  Future<void> savePendingSubmission(BuildContext context, List<String> lines, String timestamp) async {
+    final box = await Hive.openBox('offline_submissions');
 
     final data = {
       'timestamp': timestamp,
       'lines': lines,
+      'isSubmitted': false,
+    };
+
+    await box.put(timestamp, data);
+    print('Saved pending submission: $data');
+  }
+  void submitScannedData(BuildContext context, List<String> lines, String timestamp) async {
+    final box = Hive.box('offline_submissions');
+    // final timestamp = DateTime.now().toIso8601String();
+
+    final data = {
+      'timestamp': timestamp,
+      'lines': lines,
+      'isSubmitted': true,
     };
 
     await box.put(timestamp, data); // Use timestamp as key
@@ -112,7 +144,6 @@ class ScanViewModel extends ChangeNotifier {
     scannedLines = lines;
     notifyListeners();
   }
-
 
   void clearAfterSubmit() {
     Future.delayed(const Duration(seconds: 1), () {
