@@ -1,4 +1,5 @@
 import 'dart:io';
+
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
@@ -22,12 +23,22 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen> {
   void initState() {
     super.initState();
     _textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
-    _initializeCamera();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initializeCamera();
+    });
   }
 
   Future<void> _initializeCamera() async {
-    final cameraPermission = await Permission.camera.request();
-    if (!cameraPermission.isGranted) return;
+    final cameraStatus = await Permission.camera.status;
+
+    if (!cameraStatus.isGranted) {
+      final result = await Permission.camera.request();
+
+      if (!result.isGranted) {
+        debugPrint('Camera permission denied');
+        return;
+      }
+    }
 
     final cameras = await availableCameras();
     final rearCamera = cameras.firstWhere(
@@ -44,6 +55,8 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen> {
     if (!mounted) return;
     setState(() => _isInitialized = true);
   }
+
+
 
   Future<void> _captureAndProcess() async {
     if (!_cameraController.value.isInitialized || _cameraController.value.isTakingPicture) return;

@@ -4,6 +4,7 @@ import 'package:hive/hive.dart';
 
 class SavedSubmissionsViewModel extends ChangeNotifier {
   final Box _box = Hive.box('offline_submissions');
+  final Connectivity _connectivity = Connectivity();
 
   Map<String, Map<String, dynamic>> pendingSubmissions = {};
   Map<String, Map<String, dynamic>> submittedSubmissions = {};
@@ -18,6 +19,11 @@ class SavedSubmissionsViewModel extends ChangeNotifier {
 
   SavedSubmissionsViewModel() {
     loadData();
+    _connectivity.onConnectivityChanged.listen((result) {
+      if (result != ConnectivityResult.none) {
+        _submitPendingData();
+      }
+    });
   }
 
   Future<void> loadData() async {
@@ -25,8 +31,6 @@ class SavedSubmissionsViewModel extends ChangeNotifier {
     notifyListeners();
 
     final rawMap = _box.toMap();
-
-    // Clear existing maps
     pendingSubmissions.clear();
     submittedSubmissions.clear();
 
@@ -38,7 +42,6 @@ class SavedSubmissionsViewModel extends ChangeNotifier {
         final hasLines = value['lines'] != null && (value['lines'] as List).isNotEmpty;
 
         if (!hasLines) {
-          // Clean up any saved entries with no lines
           await _box.delete(entry.key);
           continue;
         }
@@ -99,6 +102,39 @@ class SavedSubmissionsViewModel extends ChangeNotifier {
     pendingSubmissions.remove(key);
     submittedSubmissions.remove(key);
     if (_selectedKey == key) _selectedKey = null;
+    notifyListeners();
+  }
+
+  /// Auto-submit pending entries when back online
+  Future<void> _submitPendingData() async {
+    if (_isSubmitting || pendingSubmissions.isEmpty) return;
+
+    _isSubmitting = true;
+    notifyListeners();
+
+    final pendingCopy = Map<String, Map<String, dynamic>>.from(pendingSubmissions);
+
+    for (var entry in pendingCopy.entries) {
+      try {
+        final key = entry.key;
+        final data = entry.value;
+
+        // Simulate your actual submission logic
+        await Future.delayed(const Duration(milliseconds: 500)); // Replace with real call
+        final updated = {
+          ...data,
+          'isSubmitted': true,
+        };
+
+        await _box.put(key, updated);
+      } catch (e) {
+        debugPrint('Auto-submit failed for $entry.key: $e');
+      }
+    }
+
+    await loadData();
+
+    _isSubmitting = false;
     notifyListeners();
   }
 }
