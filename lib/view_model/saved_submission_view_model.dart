@@ -137,4 +137,17 @@ class SavedSubmissionsViewModel extends ChangeNotifier {
     _isSubmitting = false;
     notifyListeners();
   }
+
+  void submitAllPending() {
+    // Your logic to loop through pending submissions and submit them
+    for (final entry in pendingSubmissions.entries) {
+      final key = entry.key;
+      final data = entry.value;
+
+      // Assume handleSuccessfulSubmission() moves it to submitted
+      handleSuccessfulSubmission(key, data);
+    }
+
+    notifyListeners();
+  }
 }

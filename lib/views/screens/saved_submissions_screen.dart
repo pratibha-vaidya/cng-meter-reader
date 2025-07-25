@@ -90,7 +90,8 @@ class _SavedSubmissionsView extends StatelessWidget {
                       timestamp: timestamp,
                       data: data,
                       onSubmitted: (submittedKey, submittedData) {
-                        context.read<SavedSubmissionsViewModel>()
+                        context
+                            .read<SavedSubmissionsViewModel>()
                             .handleSuccessfulSubmission(
                           submittedKey,
                           Map<String, dynamic>.from(submittedData),
@@ -99,10 +100,11 @@ class _SavedSubmissionsView extends StatelessWidget {
                     ),
                   ),
                 ).then((_) {
-                  context.read<SavedSubmissionsViewModel>().loadData();
+                  context
+                      .read<SavedSubmissionsViewModel>()
+                      .loadData();
                 });
               },
-
               onLongPress: () =>
                   _confirmDelete(context, timestamp, viewModel),
               child: Container(
@@ -181,6 +183,25 @@ class _SavedSubmissionsView extends StatelessWidget {
         padding: const EdgeInsets.only(bottom: 24),
         child: Column(
           children: [
+            if (viewModel.pendingSubmissions.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 16, vertical: 12),
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      // ✅ Implement sync logic in ViewModel
+                      viewModel.submitAllPending();
+                    },
+                    icon: const Icon(Icons.sync),
+                    label: const Text('Sync Now'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green,
+                    ),
+                  ),
+                ),
+              ),
             _buildSection(
               title: '🕒 Pending Submissions',
               submissions: viewModel.pendingSubmissions,
