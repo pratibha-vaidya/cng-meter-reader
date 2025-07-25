@@ -1,59 +1,212 @@
 import 'package:flutter/material.dart';
-import 'package:hive/hive.dart';
+import 'package:intl/intl.dart';
+import 'package:oce_poc/view_model/saved_submission_view_model.dart';
 import 'package:oce_poc/views/screens/captured_data_details_screen.dart';
+import 'package:provider/provider.dart';
 
-class SavedSubmissionsScreen extends StatefulWidget {
+class SavedSubmissionsScreen extends StatelessWidget {
   const SavedSubmissionsScreen({super.key});
 
   @override
-  State<SavedSubmissionsScreen> createState() =>
-      _SavedSubmissionsScreenState();
+  Widget build(BuildContext context) {
+    return ChangeNotifierProvider(
+      create: (_) => SavedSubmissionsViewModel()..loadData(),
+      child: const _SavedSubmissionsView(),
+    );
+  }
 }
 
-class _SavedSubmissionsScreenState extends State<SavedSubmissionsScreen> {
-  late final Box box;
+class _SavedSubmissionsView extends StatelessWidget {
+  const _SavedSubmissionsView();
 
-  @override
-  void initState() {
-    super.initState();
-    box = Hive.box('offline_submissions');
+  void _confirmDelete(
+      BuildContext context, String key, SavedSubmissionsViewModel viewModel) {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text("Delete Submission"),
+        content: const Text("Are you sure you want to delete this entry?"),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Cancel"),
+          ),
+          TextButton(
+            onPressed: () {
+              viewModel.deleteSubmission(key);
+              Navigator.pop(context);
+            },
+            child: const Text("Delete", style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSection({
+    required String title,
+    required Map<String, Map> submissions,
+    required BuildContext context,
+    required SavedSubmissionsViewModel viewModel,
+    required bool isSubmitted,
+  }) {
+    if (submissions.isEmpty) return const SizedBox();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 24),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Text(
+            title,
+            style: const TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w600,
+              color: Colors.green,
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        ListView.separated(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: submissions.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 10),
+          itemBuilder: (context, index) {
+            final timestamp = submissions.keys.elementAt(index);
+            final data = submissions[timestamp]!;
+            final lines = List<String>.from(data['lines'] ?? []);
+            final isSelected = viewModel.selectedKey == timestamp;
+
+            return GestureDetector(
+              onTap: isSubmitted
+                  ? null
+                  : () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => CapturedDataDetailsScreen(
+                      timestamp: timestamp,
+                      data: data,
+                      onSubmitted: (submittedKey, submittedData) {
+                        context.read<SavedSubmissionsViewModel>()
+                            .handleSuccessfulSubmission(
+                          submittedKey,
+                          Map<String, dynamic>.from(submittedData),
+                        );
+                      },
+                    ),
+                  ),
+                ).then((_) {
+                  context.read<SavedSubmissionsViewModel>().loadData();
+                });
+              },
+
+              onLongPress: () =>
+                  _confirmDelete(context, timestamp, viewModel),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                margin: const EdgeInsets.symmetric(horizontal: 16),
+                decoration: BoxDecoration(
+                  color: isSubmitted
+                      ? Colors.green.shade50
+                      : isSelected
+                      ? Colors.green.shade700
+                      : Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: isSelected ? Colors.green : Colors.grey.shade300,
+                    width: 1,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.grey.withOpacity(0.15),
+                      blurRadius: 6,
+                      offset: const Offset(0, 3),
+                    )
+                  ],
+                ),
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(
+                    formatTimestamp(timestamp),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 15,
+                    ),
+                  ),
+                  subtitle: Text(
+                    'Lines captured: ${lines.length}',
+                    style: TextStyle(
+                      color: Colors.grey.shade700,
+                    ),
+                  ),
+                  trailing: isSubmitted
+                      ? null
+                      : IconButton(
+                    icon: const Icon(Icons.delete, color: Colors.red),
+                    onPressed: () =>
+                        _confirmDelete(context, timestamp, viewModel),
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      ],
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final keys = box.keys.toList().cast<String>().reversed.toList();
+    final viewModel = Provider.of<SavedSubmissionsViewModel>(context);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Saved Submissions')),
-      body: keys.isEmpty
-          ? const Center(child: Text('No offline data available'))
-          : ListView.builder(
-        itemCount: keys.length,
-        itemBuilder: (context, index) {
-          final timestamp = keys[index];
-          final rawData = box.get(timestamp);
-
-          if (rawData is! Map) return const SizedBox();
-
-          final lines = List<String>.from(rawData['lines'] ?? []);
-
-          return ListTile(
-            title: Text('Captured at: $timestamp'),
-            subtitle: Text('Lines: ${lines.length}'),
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => CapturedDataDetailsScreen(
-                    timestamp: timestamp,
-                    data: rawData,
-                  ),
-                ),
-              );
-            },
-          );
-        },
+      appBar: AppBar(
+        title: const Text('Saved Submissions'),
+        backgroundColor: Colors.green,
+      ),
+      body: viewModel.isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : (viewModel.pendingSubmissions.isEmpty &&
+          viewModel.submittedSubmissions.isEmpty)
+          ? const Center(
+        child: Text(
+          'No submissions available.',
+          style: TextStyle(fontSize: 16),
+        ),
+      )
+          : SingleChildScrollView(
+        padding: const EdgeInsets.only(bottom: 24),
+        child: Column(
+          children: [
+            _buildSection(
+              title: '🕒 Pending Submissions',
+              submissions: viewModel.pendingSubmissions,
+              context: context,
+              viewModel: viewModel,
+              isSubmitted: false,
+            ),
+            _buildSection(
+              title: '✅ Submitted Data',
+              submissions: viewModel.submittedSubmissions,
+              context: context,
+              viewModel: viewModel,
+              isSubmitted: true,
+            ),
+          ],
+        ),
       ),
     );
+  }
+
+  String formatTimestamp(String raw) {
+    try {
+      final date = DateTime.parse(raw);
+      return DateFormat('MMM dd, yyyy • hh:mm a').format(date);
+    } catch (_) {
+      return raw;
+    }
   }
 }

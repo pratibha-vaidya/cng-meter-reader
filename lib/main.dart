@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
+import 'package:oce_poc/view_model/dashboard_view_model.dart';
 import 'package:oce_poc/views/screens/connectivity_banner.dart';
-import 'package:oce_poc/views/screens/scan_camera_screen.dart';
+import 'package:oce_poc/views/screens/dashboard_screen.dart';
 import 'package:overlay_support/overlay_support.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:provider/provider.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -44,7 +46,12 @@ class MyApp extends StatelessWidget {
         ),
       ),
       home: ConnectivityBanner(
-        child: ScanCameraScreen(title: 'Fuel Meter Reading'),
+        child: ChangeNotifierProvider<DashboardViewModel>(create: (BuildContext context) {
+         return DashboardViewModel();
+        },
+        child: DashboardScreen(title: 'Fuel Meter Reading')
+        // child: TesseractDashboardScreen(title: 'Fuel Meter Reading')
+        ),
       ),
     );
   }
