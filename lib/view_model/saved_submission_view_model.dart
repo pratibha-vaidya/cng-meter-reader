@@ -32,7 +32,7 @@ class SavedSubmissionsViewModel extends ChangeNotifier {
 
     final rawMap = _box.toMap();
     pendingSubmissions.clear();
-    submittedSubmissions.clear();
+    // submittedSubmissions.clear();
 
     for (var entry in rawMap.entries) {
       final key = entry.key.toString();
