@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:oce_poc/view_model/dashboard_view_model.dart';
 import 'package:oce_poc/view_model/saved_submission_view_model.dart';
+import 'package:oce_poc/views/screens/gemini_camera.dart';
 import 'package:provider/provider.dart';
 
 import 'camera_capture_screen.dart';
