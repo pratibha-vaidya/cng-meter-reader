@@ -139,7 +139,7 @@ class _SavedSubmissionsView extends StatelessWidget {
                     ),
                   ),
                   subtitle: Text(
-                    'Lines captured: ${lines.length}',
+                    'Data captured: ${lines.length}',
                     style: TextStyle(
                       color: Colors.grey.shade700,
                     ),

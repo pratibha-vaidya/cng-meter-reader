@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
+import 'package:geocoding/geocoding.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:hive/hive.dart';
 import 'package:image_cropper/image_cropper.dart';
@@ -23,7 +25,6 @@ class DashboardViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-
   Future<bool> requestGalleryPermission() async {
     if (Platform.isAndroid) {
       final androidInfo = await DeviceInfoPlugin().androidInfo;
@@ -41,7 +42,36 @@ class DashboardViewModel extends ChangeNotifier {
     return connectivityResult != ConnectivityResult.none;
   }
 
+  Future<Position> getCurrentPosition() async {
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      throw Exception('Location services are disabled.');
+    }
 
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        throw Exception('Location permission denied.');
+      }
+    }
+
+    return await Geolocator.getCurrentPosition();
+  }
+
+  Future<String> getAreaNameFromCoordinates(Position position) async {
+    List<Placemark> placemarks = await placemarkFromCoordinates(
+      position.latitude,
+      position.longitude,
+    );
+
+    if (placemarks.isNotEmpty) {
+      final p = placemarks.first;
+      return '${p.subLocality}, ${p.locality}, ${p.administrativeArea}, ${p.country}';
+    }
+
+    return 'Unknown Area';
+  }
 
   Future<File?> pickAndCropImageFromGallery() async {
     final picker = ImagePicker();
@@ -98,7 +128,8 @@ class DashboardViewModel extends ChangeNotifier {
     return lines;
   }
 
-  Future<void> savePendingSubmission(BuildContext context, List<String> lines, String timestamp) async {
+  Future<void> savePendingSubmission(
+      BuildContext context, List<String> lines, String timestamp) async {
     final box = await Hive.openBox('offline_submissions');
 
     final data = {
@@ -110,7 +141,9 @@ class DashboardViewModel extends ChangeNotifier {
     await box.put(timestamp, data);
     print('Saved pending submission: $data');
   }
-  void submitScannedData(BuildContext context, List<String> lines, String timestamp) async {
+
+  void submitScannedData(
+      BuildContext context, List<String> lines, String timestamp) async {
     final box = Hive.box('offline_submissions');
     // final timestamp = DateTime.now().toIso8601String();
 
@@ -128,11 +161,6 @@ class DashboardViewModel extends ChangeNotifier {
     );
   }
 
-  void _showSnackBar(BuildContext context, String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
-  }
 
   void clear() {
     selectedImage = null;

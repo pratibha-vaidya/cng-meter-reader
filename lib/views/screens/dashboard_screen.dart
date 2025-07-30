@@ -1,20 +1,58 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:oce_poc/view_model/dashboard_view_model.dart';
 import 'package:oce_poc/view_model/saved_submission_view_model.dart';
-import 'package:oce_poc/views/screens/gemini_camera.dart';
+import 'package:oce_poc/views/screens/camera_capture_screen.dart';
+import 'package:oce_poc/views/screens/saved_submissions_screen.dart';
 import 'package:provider/provider.dart';
 
-import 'camera_capture_screen.dart';
-import 'saved_submissions_screen.dart';
+class DashboardScreen extends StatefulWidget {
+  const DashboardScreen({super.key, required this.title});
+  final String title;
 
-class DashboardScreen extends StatelessWidget {
-  const DashboardScreen({super.key, required String title});
+  @override
+  State<DashboardScreen> createState() => _DashboardScreenState();
+}
+
+class _DashboardScreenState extends State<DashboardScreen> {
+  int _selectedIndex = 0;
+
+  final _screens = [
+    const DashboardBody(),
+    ChangeNotifierProvider(
+      create: (_) => SavedSubmissionsViewModel(),
+      child: const SavedSubmissionsScreen(),
+    ),
+  ];
+
+  void _onTabTapped(int index) {
+    setState(() => _selectedIndex = index);
+  }
 
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
       create: (_) => DashboardViewModel(),
-      child: const DashboardBody(),
+      child: Scaffold(
+        body: _screens[_selectedIndex],
+        bottomNavigationBar: SizedBox(
+          height: 80, // 👈 Increased height here
+          child: BottomNavigationBar(
+            currentIndex: _selectedIndex,
+            onTap: _onTabTapped,
+            items: const [
+              BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
+              BottomNavigationBarItem(icon: Icon(Icons.list_alt), label: 'Submissions'),
+            ],
+            selectedItemColor: Colors.green,
+            unselectedItemColor: Colors.grey,
+            iconSize: 30,
+            selectedFontSize: 16,
+            unselectedFontSize: 14,
+          ),
+        ),
+
+      ),
     );
   }
 }
@@ -29,46 +67,27 @@ class DashboardBody extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.green,
-        title: const Text('Fuel Sales Scanner'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.history),
-            tooltip: 'Saved Records',
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => ChangeNotifierProvider(
-                  create: (_) => SavedSubmissionsViewModel(),
-                  child: const SavedSubmissionsScreen(),
-                ),
-              ),
-            ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.settings),
-            onPressed: () {},
-          ),
-        ],
+        title: const Text('📟 CNG Meter Reading'),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(
           children: [
-            const SizedBox(height: 30),
-            const Icon(Icons.local_gas_station, size: 80, color: Colors.deepOrange),
-            const SizedBox(height: 10),
+            const SizedBox(height: 20),
+            Icon(Icons.speed, size: 80, color: Colors.orange.shade700),
+            const SizedBox(height: 12),
             const Text(
-              'Capture Daily Fuel Meter Readings',
+              'Capture Your Daily CNG DU Meter Readings',
               style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 30),
             _buildScanCard(context),
             if (viewModel.selectedImage != null) ...[
-              const SizedBox(height: 30),
+              const SizedBox(height: 20),
               ClipRRect(
                 borderRadius: BorderRadius.circular(10),
-                child: Image.file(viewModel.selectedImage!, height: 150),
+                child: Image.file(viewModel.selectedImage!, height: 180),
               ),
             ],
           ],
@@ -87,18 +106,26 @@ class DashboardBody extends StatelessWidget {
           children: [
             _buildButton(
               context,
-              label: 'Scan Sales from Camera',
+              label: 'Scan CNG DU Reading (Camera)',
               icon: Icons.camera_alt,
-              color: Colors.deepOrange,
+              color: Colors.teal.shade400,
               onPressed: () => _scanFromCamera(context),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
             _buildButton(
               context,
-              label: 'Upload Meter Photo',
+              label: 'Upload DU Meter Image',
               icon: Icons.photo_library,
-              color: Colors.indigo,
+              color: Colors.lightGreen.shade400,
               onPressed: () => _scanFromGallery(context),
+            ),
+            const SizedBox(height: 16),
+            _buildButton(
+              context,
+              label: 'Enter DU Reading Manually',
+              icon: Icons.edit_note,
+              color: Colors.grey.shade500,
+              onPressed: () => _showManualEntryDialog(context),
             ),
           ],
         ),
@@ -123,7 +150,19 @@ class DashboardBody extends StatelessWidget {
     );
   }
 
-  Future<void> _scanFromGallery(BuildContext context) async {
+  void _scanFromCamera(BuildContext context) async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const CameraCaptureScreen()),
+    );
+
+    if (result is Map) {
+      final lines = result['labeledValues'] as List<String>? ?? [];
+      _showDetectedLinesDialog(context, lines);
+    }
+  }
+
+  void _scanFromGallery(BuildContext context) async {
     final viewModel = context.read<DashboardViewModel>();
     final hasPermission = await viewModel.requestGalleryPermission();
     if (!hasPermission) {
@@ -138,47 +177,184 @@ class DashboardBody extends StatelessWidget {
     _showDetectedLinesDialog(context, detectedLines);
   }
 
-  Future<void> _scanFromCamera(BuildContext context) async {
-    final result = await Navigator.push(
-      context,
-      // MaterialPageRoute(builder: (_) => const TesseractCamera()),
-      MaterialPageRoute(builder: (_) => const CameraCaptureScreen()),
-    );
+  void _showManualEntryDialog(BuildContext context) {
+    final priceController = TextEditingController();
+    final volumeController = TextEditingController();
+    final rateController = TextEditingController();
 
-    if (result is Map) {
-      final lines = result['labeledValues'] as List<String>? ?? [];
-      _showDetectedLinesDialog(context, lines);
-    }
-  }
-
-  void _showDetectedLinesDialog(BuildContext context, List<String> rows) {
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('Detected Fuel Sales Data'),
-        content: rows.isEmpty
-            ? const Text('No data found.')
-            : SizedBox(
-          width: double.maxFinite,
-          height: 300,
-          child: ListView.builder(
-            itemCount: rows.length,
-            itemBuilder: (_, index) => ListTile(title: Text(rows[index])),
+        title: const Text("✍️ Manual DU Reading Entry"),
+        content: SingleChildScrollView(
+          child: Column(
+            children: [
+              _buildInputField(priceController, "Total Price (₹)"),
+              const SizedBox(height: 10),
+              _buildInputField(volumeController, "Litres"),
+              const SizedBox(height: 10),
+              _buildInputField(rateController, "Price per Litre (₹)"),
+            ],
           ),
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              final enteredData = {
+                "total_price_rupees": priceController.text.trim(),
+                "volume_litres": volumeController.text.trim(),
+                "price_per_litre": rateController.text.trim(),
+              };
+              _showFormattedFuelDataDialog(context, enteredData);
+            },
+            child: const Text('Submit'),
           ),
-          if (rows.isNotEmpty)
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context);
-                _confirmSubmission(context, rows);
-              },
-              child: const Text('Submit'),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInputField(TextEditingController controller, String label) {
+    return TextField(
+      controller: controller,
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      decoration: InputDecoration(
+        labelText: label,
+        border: const OutlineInputBorder(),
+      ),
+    );
+  }
+
+  void _showDetectedLinesDialog(BuildContext context, List<String> lines) {
+    final jsonString = _extractJsonFromLines(lines);
+    Map<String, dynamic> _extractFuelDataFromText(String text) {
+      final lower = text.toLowerCase();
+
+      String extractValue(String keyword) {
+        final regex = RegExp(r'([\d,.]+)\s*' + RegExp.escape(keyword), caseSensitive: false);
+        final match = regex.firstMatch(lower);
+        return match?.group(1)?.replaceAll(',', '') ?? '';
+      }
+
+      return {
+        'total_price_rupees': extractValue('rupees'),
+        'volume_litres': extractValue('litres'),
+        'price_per_litre': extractValue('rs./litre') != ''
+            ? extractValue('rs./litre')
+            : extractValue('₹/litre'),
+      };
+    }
+
+    Map<String, dynamic>? extractedData;
+
+    if (jsonString != null) {
+      try {
+        final data = json.decode(jsonString);
+        if (data is Map<String, dynamic>) {
+          extractedData = data;
+        }
+      } catch (e) {
+        debugPrint('❌ JSON parse error: $e');
+      }
+    }
+
+    extractedData ??= _extractFuelDataFromText(lines.join('\n'));
+    _showFormattedFuelDataDialog(context, extractedData);
+  }
+
+  void _showFormattedFuelDataDialog(BuildContext context, Map<String, dynamic> data) {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('✅ CNG Meter Readings'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildValueTile("Total Price", data["total_price_rupees"], "₹"),
+            _buildValueTile("Litres", data["volume_litres"], "L"),
+            _buildValueTile("Rate per Litre", data["price_per_litre"], "₹"),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _showEditableFuelDialog(context, data);
+            },
+            child: const Text('Edit'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _confirmSubmission(context, [
+                'Total Price (₹): ${data["total_price_rupees"]}',
+                'Litres: ${data["volume_litres"]}',
+                'Price per Litre (₹): ${data["price_per_litre"]}',
+              ]);
+            },
+            child: const Text('Submit'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showEditableFuelDialog(BuildContext context, Map<String, dynamic> originalData) {
+    final priceController = TextEditingController(text: originalData["total_price_rupees"] ?? '');
+    final volumeController = TextEditingController(text: originalData["volume_litres"] ?? '');
+    final rateController = TextEditingController(text: originalData["price_per_litre"] ?? '');
+
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text("✏️ Edit Meter Readings"),
+        content: SingleChildScrollView(
+          child: Column(
+            children: [
+              _buildInputField(priceController, "Total Price (₹)"),
+              const SizedBox(height: 10),
+              _buildInputField(volumeController, " Litres"),
+              const SizedBox(height: 10),
+              _buildInputField(rateController, "Price per Litre (₹)"),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              final updatedData = {
+                "total_price_rupees": priceController.text.trim(),
+                "volume_litres": volumeController.text.trim(),
+                "price_per_litre": rateController.text.trim(),
+              };
+              _showFormattedFuelDataDialog(context, updatedData);
+            },
+            child: const Text('Submit'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildValueTile(String label, String value, String unit) {
+    final isMissing = value.trim().isEmpty;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6.0),
+      child: Row(
+        children: [
+          Expanded(child: Text(label, style: const TextStyle(fontWeight: FontWeight.w600))),
+          Text(
+            isMissing ? 'Not found' : '$value $unit',
+            style: TextStyle(
+              color: isMissing ? Colors.red : Colors.green,
+              fontWeight: FontWeight.bold,
             ),
+          ),
         ],
       ),
     );
@@ -186,7 +362,7 @@ class DashboardBody extends StatelessWidget {
 
   void _confirmSubmission(BuildContext context, List<String> rows) {
     final dashboardVM = Provider.of<DashboardViewModel>(context, listen: false);
-    final timestamp = DateTime.now().toIso8601String(); // ✅ Generate once
+    final timestamp = DateTime.now().toIso8601String();
 
     showDialog(
       context: context,
@@ -206,7 +382,6 @@ class DashboardBody extends StatelessWidget {
                 }
 
                 final hasInternet = snapshot.data!;
-
                 return Row(
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
@@ -219,31 +394,22 @@ class DashboardBody extends StatelessWidget {
                             context,
                             "Saved locally. Will submit when internet is available.",
                           );
-                          dashboardVM.clearAfterSubmit(); // Optional cleanup
+                          dashboardVM.clearAfterSubmit();
                         },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.grey,
-                        ),
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.grey),
                         child: const Text('Submit Later'),
                       ),
                     const SizedBox(width: 10),
-                    Visibility(
-
-                      child: ElevatedButton(
+                    if (hasInternet)
+                      ElevatedButton(
                         onPressed: () {
                           Navigator.pop(context);
-                          if (hasInternet) {
-                            dashboardVM.submitScannedData(context, rows, timestamp);
-                            dashboardVM.clearAfterSubmit(); // Optional cleanup
-                          }
+                          dashboardVM.submitScannedData(context, rows, timestamp);
+                          dashboardVM.clearAfterSubmit();
                         },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green,
-                        ),
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
                         child: const Text('Yes, Submit'),
                       ),
-                      visible: hasInternet,
-                    ),
                   ],
                 );
               },
@@ -254,8 +420,18 @@ class DashboardBody extends StatelessWidget {
     );
   }
 
+  String? _extractJsonFromLines(List<String> lines) {
+    final cleanedLines = lines
+        .where((line) => !line.trim().startsWith('```'))
+        .map((line) => line.trim())
+        .join();
+
+    return cleanedLines.contains('{') && cleanedLines.contains('}')
+        ? cleanedLines
+        : null;
+  }
+
   void _showSnackBar(BuildContext context, String message) {
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 }
