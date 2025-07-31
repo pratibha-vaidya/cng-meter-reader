@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:oce_poc/view_model/camera_capture_view_model.dart';
 import 'package:oce_poc/view_model/dashboard_view_model.dart';
 import 'package:oce_poc/view_model/saved_submission_view_model.dart';
 import 'package:oce_poc/views/screens/camera_capture_screen.dart';
@@ -97,6 +98,7 @@ class DashboardBody extends StatelessWidget {
   }
 
   Widget _buildScanCard(BuildContext context) {
+
     return Card(
       elevation: 4,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -156,10 +158,16 @@ class DashboardBody extends StatelessWidget {
       MaterialPageRoute(builder: (_) => const CameraCaptureScreen()),
     );
 
-    if (result is Map) {
-      final lines = result['labeledValues'] as List<String>? ?? [];
-      _showDetectedLinesDialog(context, lines);
+
+
+    if (result != null && result is Map<String, dynamic>) {
+      final lines = result['labeledValues'] as List<String>;
+      final location = result['location'] as String? ?? 'Not found';
+      debugPrint('Locationnnn::::$location');
+
+      _showDetectedLinesDialog(context, lines, location );
     }
+
   }
 
   void _scanFromGallery(BuildContext context) async {
@@ -174,7 +182,7 @@ class DashboardBody extends StatelessWidget {
     if (imageFile == null) return;
 
     final detectedLines = await viewModel.processImage(imageFile);
-    _showDetectedLinesDialog(context, detectedLines);
+    _showDetectedLinesDialog(context, detectedLines, '');
   }
 
   void _showManualEntryDialog(BuildContext context) {
@@ -207,7 +215,7 @@ class DashboardBody extends StatelessWidget {
                 "volume_litres": volumeController.text.trim(),
                 "price_per_litre": rateController.text.trim(),
               };
-              _showFormattedFuelDataDialog(context, enteredData);
+              _showFormattedFuelDataDialog(context, enteredData,);
             },
             child: const Text('Submit'),
           ),
@@ -227,8 +235,9 @@ class DashboardBody extends StatelessWidget {
     );
   }
 
-  void _showDetectedLinesDialog(BuildContext context, List<String> lines) {
+  void _showDetectedLinesDialog(BuildContext context, List<String> lines,String location) {
     final jsonString = _extractJsonFromLines(lines);
+
     Map<String, dynamic> _extractFuelDataFromText(String text) {
       final lower = text.toLowerCase();
 
@@ -259,12 +268,17 @@ class DashboardBody extends StatelessWidget {
         debugPrint('❌ JSON parse error: $e');
       }
     }
-
     extractedData ??= _extractFuelDataFromText(lines.join('\n'));
-    _showFormattedFuelDataDialog(context, extractedData);
+    extractedData['location'] = location;
+    debugPrint('extractedLocation::::: ${extractedData}');
+
+    _showFormattedFuelDataDialog(context, extractedData, );
   }
 
-  void _showFormattedFuelDataDialog(BuildContext context, Map<String, dynamic> data) {
+  void _showFormattedFuelDataDialog(BuildContext context, Map<String, dynamic> data,) {
+
+    debugPrint('data::::: $data');
+
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
@@ -275,6 +289,7 @@ class DashboardBody extends StatelessWidget {
             _buildValueTile("Total Price", data["total_price_rupees"], "₹"),
             _buildValueTile("Litres", data["volume_litres"], "L"),
             _buildValueTile("Rate per Litre", data["price_per_litre"], "₹"),
+            _buildValueTile("Location",data["location"], ""),
           ],
         ),
         actions: [
@@ -293,6 +308,7 @@ class DashboardBody extends StatelessWidget {
                 'Total Price (₹): ${data["total_price_rupees"]}',
                 'Litres: ${data["volume_litres"]}',
                 'Price per Litre (₹): ${data["price_per_litre"]}',
+                'Location: ${data["location"]}',
               ]);
             },
             child: const Text('Submit'),
@@ -302,7 +318,41 @@ class DashboardBody extends StatelessWidget {
     );
   }
 
-  void _showEditableFuelDialog(BuildContext context, Map<String, dynamic> originalData) {
+  Widget _buildValueTile(String label, dynamic value, String unit) {
+    final stringValue = (value ?? '').toString().trim();
+    final isMissing = stringValue.isEmpty;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            flex: 2,
+            child: Text(
+              label,
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+          ),
+          Expanded(
+            flex: 3,
+            child: Text(
+              isMissing ? 'Not found' : '$stringValue $unit',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: isMissing ? Colors.red : Colors.green,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+
+  void _showEditableFuelDialog(BuildContext context, Map<String, dynamic> originalData,) {
     final priceController = TextEditingController(text: originalData["total_price_rupees"] ?? '');
     final volumeController = TextEditingController(text: originalData["volume_litres"] ?? '');
     final rateController = TextEditingController(text: originalData["price_per_litre"] ?? '');
@@ -332,7 +382,7 @@ class DashboardBody extends StatelessWidget {
                 "volume_litres": volumeController.text.trim(),
                 "price_per_litre": rateController.text.trim(),
               };
-              _showFormattedFuelDataDialog(context, updatedData);
+              _showFormattedFuelDataDialog(context, updatedData,);
             },
             child: const Text('Submit'),
           ),
@@ -341,24 +391,6 @@ class DashboardBody extends StatelessWidget {
     );
   }
 
-  Widget _buildValueTile(String label, String value, String unit) {
-    final isMissing = value.trim().isEmpty;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6.0),
-      child: Row(
-        children: [
-          Expanded(child: Text(label, style: const TextStyle(fontWeight: FontWeight.w600))),
-          Text(
-            isMissing ? 'Not found' : '$value $unit',
-            style: TextStyle(
-              color: isMissing ? Colors.red : Colors.green,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
   void _confirmSubmission(BuildContext context, List<String> rows) {
     final dashboardVM = Provider.of<DashboardViewModel>(context, listen: false);
@@ -392,7 +424,7 @@ class DashboardBody extends StatelessWidget {
                           dashboardVM.savePendingSubmission(context, rows, timestamp);
                           _showSnackBar(
                             context,
-                            "Saved locally. Will submit when internet is available.",
+                            "Data will be submitted once the internet is back!",
                           );
                           dashboardVM.clearAfterSubmit();
                         },

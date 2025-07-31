@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
+import 'package:oce_poc/view_model/camera_capture_view_model.dart';
 import 'package:oce_poc/view_model/dashboard_view_model.dart';
 import 'package:oce_poc/views/screens/connectivity_banner.dart';
 import 'package:oce_poc/views/screens/dashboard_screen.dart';
@@ -46,11 +47,12 @@ class MyApp extends StatelessWidget {
         ),
       ),
       home: ConnectivityBanner(
-        child: ChangeNotifierProvider<DashboardViewModel>(create: (BuildContext context) {
-         return DashboardViewModel();
-        },
-        child: DashboardScreen(title: 'Fuel Meter Reading')
-        // child: TesseractDashboardScreen(title: 'Fuel Meter Reading')
+        child: MultiProvider(
+          providers: [
+            ChangeNotifierProvider(create: (_) => DashboardViewModel()),
+            ChangeNotifierProvider(create: (_) => CameraCaptureViewModel()),
+          ],
+          child: DashboardScreen(title: 'Fuel Meter Reading'),
         ),
       ),
     );

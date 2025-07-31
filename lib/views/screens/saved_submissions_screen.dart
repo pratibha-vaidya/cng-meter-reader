@@ -138,21 +138,39 @@ class _SavedSubmissionsView extends StatelessWidget {
                       fontSize: 15,
                     ),
                   ),
-                  subtitle: Text(
-                    'Data captured: ${lines.length}',
-                    style: TextStyle(
-                      color: Colors.grey.shade700,
-                    ),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Data captured: ${lines.length}',
+                        style: TextStyle(color: Colors.grey.shade700),
+                      ),
+                      if (lines.any((line) => line.toLowerCase().startsWith('location:')))
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4.0),
+                          child: Text(
+                            '📍 ${lines.firstWhere(
+                                  (line) => line.toLowerCase().startsWith('location:'),
+                              orElse: () => '',
+                            ).replaceFirst(RegExp(r'location:\s*', caseSensitive: false), '')}',
+                            style: const TextStyle(
+                              fontStyle: FontStyle.italic,
+                              color: Colors.black87,
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
+
                   trailing: isSubmitted
                       ? null
                       : IconButton(
                     icon: const Icon(Icons.delete, color: Colors.red),
-                    onPressed: () =>
-                        _confirmDelete(context, timestamp, viewModel),
+                    onPressed: () => _confirmDelete(context, timestamp, viewModel),
                   ),
                 ),
               ),
+
             );
           },
         ),
