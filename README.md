@@ -83,7 +83,6 @@ Before final submission, users can:
 
 - **Flutter** (Frontend)
 - **Google ML Kit** (Offline OCR)
-- **Gemini API** (Online AI analysis)
 - **Hive** (Local storage)
 - **Geolocator & Geocoding** (GPS tagging)
 
